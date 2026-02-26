@@ -1,0 +1,26 @@
+
+.venv/
+venv/
+
+# python and env variables related
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+
+.env
+
+# macOS auto-generated files 
+.DS_Store
+
+.vscode/
+
+# Pytest cache 
+.pytest_cache/
+
+# alembic related
+*.sqlite3
+
+# just in case docker content sneaks in
+pgdata/
