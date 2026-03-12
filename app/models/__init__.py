@@ -1,5 +1,2 @@
-from sqlalchemy.orm import DeclarativeBase
-from .network import Network
-
-class Base(DeclarativeBase):
-    pass
+from app.models.base import Base
+from app.models.network import Network
