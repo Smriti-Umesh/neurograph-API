@@ -1,10 +1,14 @@
 from pydantic import BaseModel
 
-# for the user who sends to create a network
+
 class NetworkCreate(BaseModel):
     name: str
 
-# API response
+
+class NetworkUpdate(BaseModel):
+    name: str
+
+
 class NetworkResponse(BaseModel):
     id: int
     name: str
