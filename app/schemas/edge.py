@@ -36,3 +36,18 @@ class LearnResponse(BaseModel):
 class DecayResponse(BaseModel):
     message: str
     decayed_edges: list[EdgeResponse]
+
+class QueryRequest(BaseModel):
+    seed_node_id: int
+    max_hops: int = 2
+
+
+class ActivatedNodeResponse(BaseModel):
+    node_id: int
+    score: float
+    path: list[int]
+
+
+class QueryResponse(BaseModel):
+    message: str
+    results: list[ActivatedNodeResponse]

@@ -12,6 +12,8 @@ from app.schemas.edge import (
     LearnRequest,
     LearnResponse,
     DecayResponse,
+    QueryRequest,
+    QueryResponse,
 )
 
 router = APIRouter(tags=["edges"])
@@ -21,6 +23,7 @@ INITIAL_WEIGHT = 1.0
 DECAY_AMOUNT = 0.2
 ARCHIVE_THRESHOLD = 0.3
 RESTORE_THRESHOLD = 0.5
+PROPAGATION_DECAY = 0.5
 
 
 @router.post("/networks/{network_id}/edges", response_model=EdgeResponse, status_code=status.HTTP_201_CREATED)
@@ -224,4 +227,106 @@ def decay_edges(network_id: int, db: Session = Depends(get_db)):
     return {
         "message": "Decay applied successfully",
         "decayed_edges": active_edges,
+    }
+
+@router.post("/networks/{network_id}/query", response_model=QueryResponse)
+def query_network(network_id: int, payload: QueryRequest, db: Session = Depends(get_db)):
+    network = db.query(Network).filter(Network.id == network_id).first()
+    if network is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Network not found"
+        )
+
+    seed_node = db.query(Node).filter(Node.id == payload.seed_node_id).first()
+    if seed_node is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Seed node not found"
+        )
+
+    if seed_node.network_id != network_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Seed node must belong to the specified network"
+        )
+
+    results = []
+    queue = [(payload.seed_node_id, 1.0, [payload.seed_node_id], 0)]
+    best_scores = {payload.seed_node_id: 1.0}
+
+    while queue:
+        current_node_id, current_score, path, hops = queue.pop(0)
+
+        if hops >= payload.max_hops:
+            continue
+
+        outgoing_edges = (
+            db.query(Edge)
+            .filter(
+                Edge.network_id == network_id,
+                Edge.source_node_id == current_node_id,
+                Edge.is_active.is_(True),
+            )
+            .all()
+        )
+
+        for edge in outgoing_edges:
+            next_node_id = edge.target_node_id
+            next_score = current_score * edge.weight * PROPAGATION_DECAY
+            next_path = path + [next_node_id]
+
+            if next_node_id not in best_scores or next_score > best_scores[next_node_id]:
+                best_scores[next_node_id] = next_score
+                queue.append((next_node_id, next_score, next_path, hops + 1))
+
+    for node_id, score in best_scores.items():
+        if node_id == payload.seed_node_id:
+            continue
+
+        path_queue = [(payload.seed_node_id, [payload.seed_node_id], 0, 1.0)]
+        best_path = None
+        best_path_score = -1.0
+
+        while path_queue:
+            current_node_id, current_path, hops, current_path_score = path_queue.pop(0)
+
+            if hops >= payload.max_hops:
+                continue
+
+            outgoing_edges = (
+                db.query(Edge)
+                .filter(
+                    Edge.network_id == network_id,
+                    Edge.source_node_id == current_node_id,
+                    Edge.is_active.is_(True),
+                )
+                .all()
+            )
+
+            for edge in outgoing_edges:
+                candidate_node_id = edge.target_node_id
+                candidate_score = current_path_score * edge.weight * PROPAGATION_DECAY
+                candidate_path = current_path + [candidate_node_id]
+
+                if candidate_node_id == node_id and candidate_score > best_path_score:
+                    best_path = candidate_path
+                    best_path_score = candidate_score
+
+                if candidate_node_id not in current_path:
+                    path_queue.append((candidate_node_id, candidate_path, hops + 1, candidate_score))
+
+        results.append(
+            {
+                "node_id": node_id,
+                "score": score,
+                "path": best_path or [payload.seed_node_id, node_id],
+            }
+        )
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+
+    return {
+        "message": "Query completed successfully",
+        "results": results,
     }
