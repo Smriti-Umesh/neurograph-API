@@ -22,3 +22,14 @@ class EdgeResponse(BaseModel):
     activation_count: int
 
     model_config = {"from_attributes": True}
+
+# the body sent to the learning endpoint.
+class LearnRequest(BaseModel):
+    source_node_id: int
+    target_node_id: int
+    relationship_type: str = "related_to"
+
+
+class LearnResponse(BaseModel):
+    message: str
+    edge: EdgeResponse

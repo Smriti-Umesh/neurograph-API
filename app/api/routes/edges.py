@@ -5,9 +5,18 @@ from app.core.db import get_db
 from app.models.network import Network
 from app.models.node import Node
 from app.models.edge import Edge
-from app.schemas.edge import EdgeCreate, EdgeUpdate, EdgeResponse
+from app.schemas.edge import (
+    EdgeCreate,
+    EdgeUpdate,
+    EdgeResponse,
+    LearnRequest,
+    LearnResponse,
+)
 
 router = APIRouter(tags=["edges"])
+
+LEARNING_INCREMENT = 0.1
+INITIAL_WEIGHT = 1.0
 
 
 @router.post("/networks/{network_id}/edges", response_model=EdgeResponse, status_code=status.HTTP_201_CREATED)
@@ -53,6 +62,70 @@ def create_edge(network_id: int, payload: EdgeCreate, db: Session = Depends(get_
     db.refresh(edge)
 
     return edge
+
+
+@router.post("/networks/{network_id}/learn", response_model=LearnResponse)
+def learn_edge(network_id: int, payload: LearnRequest, db: Session = Depends(get_db)):
+    network = db.query(Network).filter(Network.id == network_id).first()
+    if network is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Network not found"
+        )
+
+    source_node = db.query(Node).filter(Node.id == payload.source_node_id).first()
+    if source_node is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Source node not found"
+        )
+
+    target_node = db.query(Node).filter(Node.id == payload.target_node_id).first()
+    if target_node is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Target node not found"
+        )
+
+    if source_node.network_id != network_id or target_node.network_id != network_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Both nodes must belong to the specified network"
+        )
+
+    edge = (
+        db.query(Edge)
+        .filter(
+            Edge.network_id == network_id,
+            Edge.source_node_id == payload.source_node_id,
+            Edge.target_node_id == payload.target_node_id,
+        )
+        .first()
+    )
+
+    if edge is None:
+        edge = Edge(
+            network_id=network_id,
+            source_node_id=payload.source_node_id,
+            target_node_id=payload.target_node_id,
+            relationship_type=payload.relationship_type,
+            weight=INITIAL_WEIGHT,
+            is_active=True,
+            activation_count=1,
+        )
+        db.add(edge)
+    else:
+        edge.weight += LEARNING_INCREMENT
+        edge.activation_count += 1
+        edge.is_active = True
+
+    db.commit()
+    db.refresh(edge)
+
+    return {
+        "message": "Learning applied successfully",
+        "edge": edge,
+    }
 
 
 @router.get("/networks/{network_id}/edges", response_model=list[EdgeResponse])

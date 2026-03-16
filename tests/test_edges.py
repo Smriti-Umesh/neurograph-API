@@ -192,3 +192,108 @@ def test_delete_edge(client):
 
     get_response = client.get(f"/edges/{edge_id}")
     assert get_response.status_code == 404 
+
+def test_learn_creates_new_edge_when_missing(client):
+    network_id = create_network(client)
+    source_node_id = create_node(client, network_id, "Node A")
+    target_node_id = create_node(client, network_id, "Node B")
+
+    response = client.post(
+        f"/networks/{network_id}/learn",
+        json={
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["message"] == "Learning applied successfully"
+    assert data["edge"]["network_id"] == network_id
+    assert data["edge"]["source_node_id"] == source_node_id
+    assert data["edge"]["target_node_id"] == target_node_id
+    assert data["edge"]["relationship_type"] == "related_to"
+    assert data["edge"]["weight"] == 1.0
+    assert data["edge"]["is_active"] is True
+    assert data["edge"]["activation_count"] == 1
+
+def test_learn_strengthens_existing_edge(client):
+    network_id = create_network(client)
+    source_node_id = create_node(client, network_id, "Node A")
+    target_node_id = create_node(client, network_id, "Node B")
+
+    create_response = client.post(
+        f"/networks/{network_id}/edges",
+        json={
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )
+    assert create_response.status_code == 201
+
+    learn_response = client.post(
+        f"/networks/{network_id}/learn",
+        json={
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )
+
+    assert learn_response.status_code == 200
+    data = learn_response.json()
+
+    assert data["message"] == "Learning applied successfully"
+    assert data["edge"]["weight"] == 1.1
+    assert data["edge"]["activation_count"] == 1
+    assert data["edge"]["is_active"] is True
+
+def test_learn_repeatedly_strengthens_edge(client):
+    network_id = create_network(client)
+    source_node_id = create_node(client, network_id, "Node A")
+    target_node_id = create_node(client, network_id, "Node B")
+
+    first_response = client.post(
+        f"/networks/{network_id}/learn",
+        json={
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )
+    assert first_response.status_code == 200
+
+    second_response = client.post(
+        f"/networks/{network_id}/learn",
+        json={
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )
+    assert second_response.status_code == 200
+
+    data = second_response.json()
+
+    assert data["edge"]["weight"] == 1.1
+    assert data["edge"]["activation_count"] == 2
+    assert data["edge"]["is_active"] is True
+
+def test_learn_with_missing_source_node_returns_404(client):
+    network_id = create_network(client)
+    target_node_id = create_node(client, network_id, "Target Node")
+
+    response = client.post(
+        f"/networks/{network_id}/learn",
+        json={
+            "source_node_id": 999,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Source node not found"}
