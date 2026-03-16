@@ -422,3 +422,159 @@ def test_decay_returns_empty_list_when_no_active_edges(client):
         "decayed_edges": [],
     }
 
+def test_archived_edge_stays_inactive_until_restore_threshold(client):
+    network_id = create_network(client)
+    source_node_id = create_node(client, network_id, "Node A")
+    target_node_id = create_node(client, network_id, "Node B")
+
+    create_response = client.post(
+        f"/networks/{network_id}/edges",
+        json={
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )
+    edge_id = create_response.json()["id"]
+
+    client.post(f"/networks/{network_id}/decay")  # 1.0 -> 0.8
+    client.post(f"/networks/{network_id}/decay")  # 0.8 -> 0.6
+    client.post(f"/networks/{network_id}/decay")  # 0.6 -> 0.4
+    client.post(f"/networks/{network_id}/decay")  # 0.4 -> 0.2 archived
+
+    first_learn = client.post(
+        f"/networks/{network_id}/learn",
+        json={
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )
+    assert first_learn.status_code == 200
+    first_data = first_learn.json()
+
+    assert first_data["edge"]["weight"] == pytest.approx(0.3)
+    assert first_data["edge"]["is_active"] is False
+
+    second_learn = client.post(
+        f"/networks/{network_id}/learn",
+        json={
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )
+    assert second_learn.status_code == 200
+    second_data = second_learn.json()
+
+    assert second_data["edge"]["weight"] == pytest.approx(0.4)
+    assert second_data["edge"]["is_active"] is False
+
+def test_archived_edge_reactivates_when_restore_threshold_reached(client):
+    network_id = create_network(client)
+    source_node_id = create_node(client, network_id, "Node A")
+    target_node_id = create_node(client, network_id, "Node B")
+
+    create_response = client.post(
+        f"/networks/{network_id}/edges",
+        json={
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )
+    edge_id = create_response.json()["id"]
+
+    client.post(f"/networks/{network_id}/decay")  # 1.0 -> 0.8
+    client.post(f"/networks/{network_id}/decay")  # 0.8 -> 0.6
+    client.post(f"/networks/{network_id}/decay")  # 0.6 -> 0.4
+    client.post(f"/networks/{network_id}/decay")  # 0.4 -> 0.2 archived
+
+    client.post(
+        f"/networks/{network_id}/learn",
+        json={
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )  # 0.2 -> 0.3
+
+    client.post(
+        f"/networks/{network_id}/learn",
+        json={
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )  # 0.3 -> 0.4
+
+    third_learn = client.post(
+        f"/networks/{network_id}/learn",
+        json={
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )  # 0.4 -> 0.5 reactivate
+
+    assert third_learn.status_code == 200
+    data = third_learn.json()
+
+    assert data["edge"]["weight"] == pytest.approx(0.5)
+    assert data["edge"]["is_active"] is True
+    assert data["edge"]["activation_count"] == 3
+
+def test_reactivated_edge_can_decay_again(client):
+    network_id = create_network(client)
+    source_node_id = create_node(client, network_id, "Node A")
+    target_node_id = create_node(client, network_id, "Node B")
+
+    create_response = client.post(
+        f"/networks/{network_id}/edges",
+        json={
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )
+    edge_id = create_response.json()["id"]
+
+    client.post(f"/networks/{network_id}/decay")
+    client.post(f"/networks/{network_id}/decay")
+    client.post(f"/networks/{network_id}/decay")
+    client.post(f"/networks/{network_id}/decay")  # archived at 0.2
+
+    client.post(
+        f"/networks/{network_id}/learn",
+        json={
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )
+    client.post(
+        f"/networks/{network_id}/learn",
+        json={
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )
+    client.post(
+        f"/networks/{network_id}/learn",
+        json={
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )  # reactivated at 0.5
+
+    decay_response = client.post(f"/networks/{network_id}/decay")
+    assert decay_response.status_code == 200
+
+    get_response = client.get(f"/edges/{edge_id}")
+    assert get_response.status_code == 200
+    edge_data = get_response.json()
+
+    assert edge_data["weight"] == pytest.approx(0.3)
+    assert edge_data["is_active"] is False

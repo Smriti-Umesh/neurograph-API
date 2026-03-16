@@ -20,6 +20,7 @@ LEARNING_INCREMENT = 0.1
 INITIAL_WEIGHT = 1.0
 DECAY_AMOUNT = 0.2
 ARCHIVE_THRESHOLD = 0.3
+RESTORE_THRESHOLD = 0.5
 
 
 @router.post("/networks/{network_id}/edges", response_model=EdgeResponse, status_code=status.HTTP_201_CREATED)
@@ -120,7 +121,9 @@ def learn_edge(network_id: int, payload: LearnRequest, db: Session = Depends(get
     else:
         edge.weight += LEARNING_INCREMENT
         edge.activation_count += 1
-        edge.is_active = True
+
+        if not edge.is_active and edge.weight >= RESTORE_THRESHOLD:
+            edge.is_active = True
 
     db.commit()
     db.refresh(edge)
