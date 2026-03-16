@@ -32,7 +32,9 @@ def test_create_edge_between_valid_nodes(client):
     assert data["source_node_id"] == source_node_id
     assert data["target_node_id"] == target_node_id
     assert data["relationship_type"] == "related_to"
-
+    assert data["weight"] == 1.0
+    assert data["is_active"] is True
+    assert data["activation_count"] == 0
 
 def test_create_edge_with_missing_source_node_returns_404(client):
     network_id = create_network(client)
@@ -110,6 +112,9 @@ def test_list_edges_for_network(client):
     data = response.json()
     assert len(data) == 1
     assert data[0]["relationship_type"] == "related_to"
+    assert data[0]["weight"] == 1.0
+    assert data[0]["is_active"] is True
+    assert data[0]["activation_count"] == 0
 
 
 def test_get_edge_by_id(client):
@@ -133,6 +138,9 @@ def test_get_edge_by_id(client):
     data = response.json()
     assert data["id"] == edge_id
     assert data["relationship_type"] == "related_to"
+    assert data["weight"] == 1.0
+    assert data["is_active"] is True
+    assert data["activation_count"] == 0
 
 
 def test_update_edge(client):
@@ -158,6 +166,9 @@ def test_update_edge(client):
     assert response.status_code == 200
     data = response.json()
     assert data["relationship_type"] == "strongly_related_to"
+    assert data["weight"] == 1.0
+    assert data["is_active"] is True
+    assert data["activation_count"] == 0
 
 
 def test_delete_edge(client):
@@ -180,4 +191,4 @@ def test_delete_edge(client):
     assert delete_response.text == ""
 
     get_response = client.get(f"/edges/{edge_id}")
-    assert get_response.status_code == 404
+    assert get_response.status_code == 404 

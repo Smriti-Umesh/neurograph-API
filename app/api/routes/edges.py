@@ -44,6 +44,9 @@ def create_edge(network_id: int, payload: EdgeCreate, db: Session = Depends(get_
         source_node_id=payload.source_node_id,
         target_node_id=payload.target_node_id,
         relationship_type=payload.relationship_type,
+        weight=1.0,
+        is_active=True,
+        activation_count=0,
     )
     db.add(edge)
     db.commit()

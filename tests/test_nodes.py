@@ -1,3 +1,5 @@
+from tests.utils import create_network, create_node, create_edge
+
 # tests/test_nodes.py
 def create_network(client, name="Node Test Network"):
     response = client.post("/networks/", json={"name": name})
@@ -115,3 +117,4 @@ def test_delete_node(client):
 
     get_response = client.get(f"/nodes/{node_id}")
     assert get_response.status_code == 404
+    
