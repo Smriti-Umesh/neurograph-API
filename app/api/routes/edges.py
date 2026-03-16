@@ -11,12 +11,15 @@ from app.schemas.edge import (
     EdgeResponse,
     LearnRequest,
     LearnResponse,
+    DecayResponse,
 )
 
 router = APIRouter(tags=["edges"])
 
 LEARNING_INCREMENT = 0.1
 INITIAL_WEIGHT = 1.0
+DECAY_AMOUNT = 0.2
+ARCHIVE_THRESHOLD = 0.3
 
 
 @router.post("/networks/{network_id}/edges", response_model=EdgeResponse, status_code=status.HTTP_201_CREATED)
@@ -185,3 +188,37 @@ def delete_edge(edge_id: int, db: Session = Depends(get_db)):
     db.commit()
 
     return None
+
+@router.post("/networks/{network_id}/decay", response_model=DecayResponse)
+def decay_edges(network_id: int, db: Session = Depends(get_db)):
+    network = db.query(Network).filter(Network.id == network_id).first()
+    if network is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Network not found"
+        )
+
+    active_edges = (
+        db.query(Edge)
+        .filter(
+            Edge.network_id == network_id,
+            Edge.is_active.is_(True),
+        )
+        .all()
+    )
+
+    for edge in active_edges:
+        edge.weight = max(0.0, edge.weight - DECAY_AMOUNT)
+
+        if edge.weight <= ARCHIVE_THRESHOLD:
+            edge.is_active = False
+
+    db.commit()
+
+    for edge in active_edges:
+        db.refresh(edge)
+
+    return {
+        "message": "Decay applied successfully",
+        "decayed_edges": active_edges,
+    }

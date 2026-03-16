@@ -29,7 +29,10 @@ class LearnRequest(BaseModel):
     target_node_id: int
     relationship_type: str = "related_to"
 
-
 class LearnResponse(BaseModel):
     message: str
     edge: EdgeResponse
+
+class DecayResponse(BaseModel):
+    message: str
+    decayed_edges: list[EdgeResponse]

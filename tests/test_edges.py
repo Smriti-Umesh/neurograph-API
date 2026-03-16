@@ -1,3 +1,5 @@
+import pytest
+
 # tests/test_edges.py
 def create_network(client, name="Edge Test Network"):
     response = client.post("/networks/", json={"name": name})
@@ -297,3 +299,126 @@ def test_learn_with_missing_source_node_returns_404(client):
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Source node not found"}
+
+def test_decay_reduces_weight_of_active_edges(client):
+    network_id = create_network(client)
+    source_node_id = create_node(client, network_id, "Node A")
+    target_node_id = create_node(client, network_id, "Node B")
+
+    create_response = client.post(
+        f"/networks/{network_id}/edges",
+        json={
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )
+    assert create_response.status_code == 201
+
+    decay_response = client.post(f"/networks/{network_id}/decay")
+    assert decay_response.status_code == 200
+
+    data = decay_response.json()
+    assert data["message"] == "Decay applied successfully"
+    assert len(data["decayed_edges"]) == 1
+    assert data["decayed_edges"][0]["weight"] == pytest.approx(0.8)
+    assert data["decayed_edges"][0]["is_active"] is True
+
+def test_decay_archives_edge_below_threshold(client):
+    network_id = create_network(client)
+    source_node_id = create_node(client, network_id, "Node A")
+    target_node_id = create_node(client, network_id, "Node B")
+
+    create_response = client.post(
+        f"/networks/{network_id}/edges",
+        json={
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )
+    assert create_response.status_code == 201
+
+    client.post(f"/networks/{network_id}/decay") 
+    client.post(f"/networks/{network_id}/decay")  
+    client.post(f"/networks/{network_id}/decay")  
+    final_response = client.post(f"/networks/{network_id}/decay")
+
+    assert final_response.status_code == 200
+    data = final_response.json()
+
+    assert len(data["decayed_edges"]) == 1
+    assert data["decayed_edges"][0]["weight"] == pytest.approx(0.2)
+    assert data["decayed_edges"][0]["is_active"] is False
+
+def test_decay_does_not_affect_archived_edges(client):
+    network_id = create_network(client)
+    source_node_id = create_node(client, network_id, "Node A")
+    target_node_id = create_node(client, network_id, "Node B")
+
+    create_response = client.post(
+        f"/networks/{network_id}/edges",
+        json={
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )
+    edge_id = create_response.json()["id"]
+
+    client.post(f"/networks/{network_id}/decay")
+    client.post(f"/networks/{network_id}/decay")
+    client.post(f"/networks/{network_id}/decay")
+    client.post(f"/networks/{network_id}/decay")  # archived at 0.2
+
+    decay_again_response = client.post(f"/networks/{network_id}/decay")
+    assert decay_again_response.status_code == 200
+
+    get_response = client.get(f"/edges/{edge_id}")
+    assert get_response.status_code == 200
+    edge_data = get_response.json()
+
+    assert edge_data["weight"] == 0.2
+    assert edge_data["is_active"] is False
+
+def test_decay_does_not_affect_archived_edges(client):
+    network_id = create_network(client)
+    source_node_id = create_node(client, network_id, "Node A")
+    target_node_id = create_node(client, network_id, "Node B")
+
+    create_response = client.post(
+        f"/networks/{network_id}/edges",
+        json={
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+            "relationship_type": "related_to",
+        },
+    )
+    edge_id = create_response.json()["id"]
+
+    client.post(f"/networks/{network_id}/decay")
+    client.post(f"/networks/{network_id}/decay")
+    client.post(f"/networks/{network_id}/decay")
+    client.post(f"/networks/{network_id}/decay")  # archived at 0.2
+
+    decay_again_response = client.post(f"/networks/{network_id}/decay")
+    assert decay_again_response.status_code == 200
+
+    get_response = client.get(f"/edges/{edge_id}")
+    assert get_response.status_code == 200
+    edge_data = get_response.json()
+
+    assert edge_data["weight"] == pytest.approx(0.2)
+    assert edge_data["is_active"] is False
+
+def test_decay_returns_empty_list_when_no_active_edges(client):
+    network_id = create_network(client)
+
+    response = client.post(f"/networks/{network_id}/decay")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "message": "Decay applied successfully",
+        "decayed_edges": [],
+    }
+
