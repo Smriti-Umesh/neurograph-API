@@ -238,25 +238,41 @@ def query_network(network_id: int, payload: QueryRequest, db: Session = Depends(
             detail="Network not found"
         )
 
-    seed_node = db.query(Node).filter(Node.id == payload.seed_node_id).first()
-    if seed_node is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Seed node not found"
-        )
-
-    if seed_node.network_id != network_id:
+    if not payload.seed_node_ids:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Seed node must belong to the specified network"
+            detail="At least one seed node is required"
         )
 
-    results = []
-    queue = [(payload.seed_node_id, 1.0, [payload.seed_node_id], 0)]
-    best_scores = {payload.seed_node_id: 1.0}
+    seed_nodes = db.query(Node).filter(Node.id.in_(payload.seed_node_ids)).all()
+    found_seed_ids = {node.id for node in seed_nodes}
+
+    missing_seed_ids = [node_id for node_id in payload.seed_node_ids if node_id not in found_seed_ids]
+    if missing_seed_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Seed node(s) not found: {missing_seed_ids}"
+        )
+
+    for node in seed_nodes:
+        if node.network_id != network_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="All seed nodes must belong to the specified network"
+            )
+
+    results_map = {}
+    queue = []
+
+    for seed_node_id in payload.seed_node_ids:
+        queue.append((seed_node_id, 1.0, [seed_node_id], 0))
+        results_map[seed_node_id] = {
+            "score": 1.0,
+            "path": [seed_node_id],
+        }
 
     while queue:
-        current_node_id, current_score, path, hops = queue.pop(0)
+        current_node_id, current_score, current_path, hops = queue.pop(0)
 
         if hops >= payload.max_hops:
             continue
@@ -274,53 +290,35 @@ def query_network(network_id: int, payload: QueryRequest, db: Session = Depends(
         for edge in outgoing_edges:
             next_node_id = edge.target_node_id
             next_score = current_score * edge.weight * PROPAGATION_DECAY
-            next_path = path + [next_node_id]
 
-            if next_node_id not in best_scores or next_score > best_scores[next_node_id]:
-                best_scores[next_node_id] = next_score
-                queue.append((next_node_id, next_score, next_path, hops + 1))
-
-    for node_id, score in best_scores.items():
-        if node_id == payload.seed_node_id:
-            continue
-
-        path_queue = [(payload.seed_node_id, [payload.seed_node_id], 0, 1.0)]
-        best_path = None
-        best_path_score = -1.0
-
-        while path_queue:
-            current_node_id, current_path, hops, current_path_score = path_queue.pop(0)
-
-            if hops >= payload.max_hops:
+            if next_score < payload.min_score:
                 continue
 
-            outgoing_edges = (
-                db.query(Edge)
-                .filter(
-                    Edge.network_id == network_id,
-                    Edge.source_node_id == current_node_id,
-                    Edge.is_active.is_(True),
-                )
-                .all()
-            )
+            if next_node_id in current_path:
+                continue
 
-            for edge in outgoing_edges:
-                candidate_node_id = edge.target_node_id
-                candidate_score = current_path_score * edge.weight * PROPAGATION_DECAY
-                candidate_path = current_path + [candidate_node_id]
+            next_path = current_path + [next_node_id]
 
-                if candidate_node_id == node_id and candidate_score > best_path_score:
-                    best_path = candidate_path
-                    best_path_score = candidate_score
+            existing_result = results_map.get(next_node_id)
+            if existing_result is None or next_score > existing_result["score"]:
+                results_map[next_node_id] = {
+                    "score": next_score,
+                    "path": next_path,
+                }
+                queue.append((next_node_id, next_score, next_path, hops + 1))
 
-                if candidate_node_id not in current_path:
-                    path_queue.append((candidate_node_id, candidate_path, hops + 1, candidate_score))
+    results = []
+    seed_id_set = set(payload.seed_node_ids)
+
+    for node_id, data in results_map.items():
+        if node_id in seed_id_set:
+            continue
 
         results.append(
             {
                 "node_id": node_id,
-                "score": score,
-                "path": best_path or [payload.seed_node_id, node_id],
+                "score": data["score"],
+                "path": data["path"],
             }
         )
 

@@ -594,11 +594,12 @@ def test_query_returns_directly_connected_active_node(client):
     )
 
     response = client.post(
-        f"/networks/{network_id}/query",
-        json={
-            "seed_node_id": node_a,
-            "max_hops": 1,
-        },
+    f"/networks/{network_id}/query",
+    json={
+        "seed_node_ids": [node_a],
+        "max_hops": 1,
+        "min_score": 0.05,
+    },
     )
 
     assert response.status_code == 200
@@ -610,36 +611,6 @@ def test_query_returns_directly_connected_active_node(client):
     assert data["results"][0]["score"] == pytest.approx(0.5)
     assert data["results"][0]["path"] == [node_a, node_b]
 
-def test_query_returns_directly_connected_active_node(client):
-    network_id = create_network(client)
-    node_a = create_node(client, network_id, "Node A")
-    node_b = create_node(client, network_id, "Node B")
-
-    client.post(
-        f"/networks/{network_id}/edges",
-        json={
-            "source_node_id": node_a,
-            "target_node_id": node_b,
-            "relationship_type": "related_to",
-        },
-    )
-
-    response = client.post(
-        f"/networks/{network_id}/query",
-        json={
-            "seed_node_id": node_a,
-            "max_hops": 1,
-        },
-    )
-
-    assert response.status_code == 200
-    data = response.json()
-
-    assert data["message"] == "Query completed successfully"
-    assert len(data["results"]) == 1
-    assert data["results"][0]["node_id"] == node_b
-    assert data["results"][0]["score"] == pytest.approx(0.5)
-    assert data["results"][0]["path"] == [node_a, node_b]
 
 def test_query_ignores_archived_edges(client):
     network_id = create_network(client)
@@ -661,12 +632,13 @@ def test_query_ignores_archived_edges(client):
     client.post(f"/networks/{network_id}/decay")  # archived
 
     response = client.post(
-        f"/networks/{network_id}/query",
-        json={
-            "seed_node_id": node_a,
-            "max_hops": 1,
-        },
-    )
+    f"/networks/{network_id}/query",
+    json={
+        "seed_node_ids": [node_a],
+        "max_hops": 1,
+        "min_score": 0.05,
+    },
+)
 
     assert response.status_code == 200
     data = response.json()
@@ -677,15 +649,16 @@ def test_query_missing_seed_node_returns_404(client):
     network_id = create_network(client)
 
     response = client.post(
-        f"/networks/{network_id}/query",
-        json={
-            "seed_node_id": 999,
-            "max_hops": 2,
-        },
-    )
+    f"/networks/{network_id}/query",
+    json={
+        "seed_node_ids": [999],
+        "max_hops": 2,
+        "min_score": 0.05,
+    },
+)
 
     assert response.status_code == 404
-    assert response.json() == {"detail": "Seed node not found"}
+    assert "Seed node(s) not found" in response.json()["detail"]
 
 def test_query_seed_node_from_different_network_returns_400(client):
     network_a = create_network(client, "Network A")
@@ -694,16 +667,154 @@ def test_query_seed_node_from_different_network_returns_400(client):
     seed_node_id = create_node(client, network_b, "Foreign Node")
 
     response = client.post(
-        f"/networks/{network_a}/query",
-        json={
-            "seed_node_id": seed_node_id,
-            "max_hops": 2,
-        },
-    )
+    f"/networks/{network_a}/query",
+    json={
+    "seed_node_ids": [seed_node_id],
+    "max_hops": 2,
+    "min_score": 0.05,
+},
+)
 
     assert response.status_code == 400
     assert response.json() == {
-        "detail": "Seed node must belong to the specified network"
-    }
+    "detail": "All seed nodes must belong to the specified network"
+}
+    
+def test_query_single_seed_still_works(client):
+    network_id = create_network(client)
+    node_a = create_node(client, network_id, "Node A")
+    node_b = create_node(client, network_id, "Node B")
 
+    client.post(
+        f"/networks/{network_id}/edges",
+        json={
+            "source_node_id": node_a,
+            "target_node_id": node_b,
+            "relationship_type": "related_to",
+        },
+    )
 
+    response = client.post(
+        f"/networks/{network_id}/query",
+        json={
+            "seed_node_ids": [node_a],
+            "max_hops": 4,
+            "min_score": 0.05,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert len(data["results"]) == 1
+    assert data["results"][0]["node_id"] == node_b
+    assert data["results"][0]["score"] == pytest.approx(0.5)
+    assert data["results"][0]["path"] == [node_a, node_b]
+
+def test_query_multiple_seeds_returns_results(client):
+    network_id = create_network(client)
+    node_a = create_node(client, network_id, "Node A")
+    node_b = create_node(client, network_id, "Node B")
+    node_c = create_node(client, network_id, "Node C")
+    node_d = create_node(client, network_id, "Node D")
+
+    client.post(
+        f"/networks/{network_id}/edges",
+        json={
+            "source_node_id": node_a,
+            "target_node_id": node_b,
+            "relationship_type": "related_to",
+        },
+    )
+    client.post(
+        f"/networks/{network_id}/edges",
+        json={
+            "source_node_id": node_c,
+            "target_node_id": node_d,
+            "relationship_type": "related_to",
+        },
+    )
+
+    response = client.post(
+        f"/networks/{network_id}/query",
+        json={
+            "seed_node_ids": [node_a, node_c],
+            "max_hops": 4,
+            "min_score": 0.05,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    returned_ids = {result["node_id"] for result in data["results"]}
+    assert returned_ids == {node_b, node_d}
+
+def test_query_min_score_prunes_weak_paths(client):
+    network_id = create_network(client)
+    node_a = create_node(client, network_id, "Node A")
+    node_b = create_node(client, network_id, "Node B")
+    node_c = create_node(client, network_id, "Node C")
+
+    client.post(
+        f"/networks/{network_id}/edges",
+        json={
+            "source_node_id": node_a,
+            "target_node_id": node_b,
+            "relationship_type": "related_to",
+        },
+    )
+    client.post(
+        f"/networks/{network_id}/edges",
+        json={
+            "source_node_id": node_b,
+            "target_node_id": node_c,
+            "relationship_type": "related_to",
+        },
+    )
+
+    response = client.post(
+        f"/networks/{network_id}/query",
+        json={
+            "seed_node_ids": [node_a],
+            "max_hops": 4,
+            "min_score": 0.3,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert len(data["results"]) == 1
+    assert data["results"][0]["node_id"] == node_b
+    assert data["results"][0]["score"] == pytest.approx(0.5)
+
+def test_query_missing_seed_nodes_return_404(client):
+    network_id = create_network(client)
+
+    response = client.post(
+        f"/networks/{network_id}/query",
+        json={
+            "seed_node_ids": [999],
+            "max_hops": 4,
+            "min_score": 0.05,
+        },
+    )
+
+    assert response.status_code == 404
+    assert "Seed node(s) not found" in response.json()["detail"]
+
+def test_query_missing_seed_nodes_return_404(client):
+    network_id = create_network(client)
+
+    response = client.post(
+        f"/networks/{network_id}/query",
+        json={
+            "seed_node_ids": [999],
+            "max_hops": 4,
+            "min_score": 0.05,
+        },
+    )
+
+    assert response.status_code == 404
+    assert "Seed node(s) not found" in response.json()["detail"]

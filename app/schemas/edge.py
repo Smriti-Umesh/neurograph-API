@@ -38,8 +38,9 @@ class DecayResponse(BaseModel):
     decayed_edges: list[EdgeResponse]
 
 class QueryRequest(BaseModel):
-    seed_node_id: int
-    max_hops: int = 2
+    seed_node_ids: list[int]
+    max_hops: int = 4
+    min_score: float = 0.05
 
 
 class ActivatedNodeResponse(BaseModel):
