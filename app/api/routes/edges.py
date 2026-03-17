@@ -2,9 +2,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
+from app.events.builders import (
+    build_edge_archived_event,
+    build_edge_decayed_event,
+    build_edge_learned_event,
+    build_edge_reactivated_event,
+)
+from app.events.publisher import publish_event
+from app.models.edge import Edge
 from app.models.network import Network
 from app.models.node import Node
-from app.models.edge import Edge
 from app.schemas.edge import (
     EdgeCreate,
     EdgeUpdate,
@@ -15,6 +22,7 @@ from app.schemas.edge import (
     QueryRequest,
     QueryResponse,
 )
+
 
 router = APIRouter(tags=["edges"])
 
@@ -110,7 +118,13 @@ def learn_edge(network_id: int, payload: LearnRequest, db: Session = Depends(get
         .first()
     )
 
+    created_new_edge = False
+
     if edge is None:
+        created_new_edge = True
+        old_weight = 0.0
+        was_active = False
+
         edge = Edge(
             network_id=network_id,
             source_node_id=payload.source_node_id,
@@ -122,7 +136,10 @@ def learn_edge(network_id: int, payload: LearnRequest, db: Session = Depends(get
         )
         db.add(edge)
     else:
-        edge.weight += LEARNING_INCREMENT
+        old_weight = edge.weight
+        was_active = edge.is_active
+
+        edge.weight = round(edge.weight + LEARNING_INCREMENT, 4)
         edge.activation_count += 1
 
         if not edge.is_active and edge.weight >= RESTORE_THRESHOLD:
@@ -131,11 +148,30 @@ def learn_edge(network_id: int, payload: LearnRequest, db: Session = Depends(get
     db.commit()
     db.refresh(edge)
 
+    publish_event(
+        "graph.edge.learned",
+        build_edge_learned_event(
+            network_id=network_id,
+            edge=edge,
+            old_weight=old_weight,
+            was_active=was_active,
+        ),
+    )
+
+    if not created_new_edge and not was_active and edge.is_active:
+        publish_event(
+            "graph.edge.reactivated",
+            build_edge_reactivated_event(
+                network_id=network_id,
+                edge=edge,
+                old_weight=old_weight,
+                restore_threshold=RESTORE_THRESHOLD,
+            ),
+        )
     return {
         "message": "Learning applied successfully",
         "edge": edge,
     }
-
 
 @router.get("/networks/{network_id}/edges", response_model=list[EdgeResponse])
 def list_edges(network_id: int, db: Session = Depends(get_db)):
@@ -195,6 +231,7 @@ def delete_edge(edge_id: int, db: Session = Depends(get_db)):
 
     return None
 
+
 @router.post("/networks/{network_id}/decay", response_model=DecayResponse)
 def decay_edges(network_id: int, db: Session = Depends(get_db)):
     network = db.query(Network).filter(Network.id == network_id).first()
@@ -213,20 +250,60 @@ def decay_edges(network_id: int, db: Session = Depends(get_db)):
         .all()
     )
 
-    for edge in active_edges:
-        edge.weight = max(0.0, edge.weight - DECAY_AMOUNT)
+    event_records = []
 
+    for edge in active_edges:
+        old_weight = edge.weight
+        was_active = edge.is_active
+
+        edge.weight = round(max(0.0, edge.weight - DECAY_AMOUNT), 4)
+
+        archived_now = False
         if edge.weight <= ARCHIVE_THRESHOLD:
             edge.is_active = False
+            archived_now = True
+
+        event_records.append(
+            {
+                "edge": edge,
+                "old_weight": old_weight,
+                "was_active": was_active,
+                "archived_now": archived_now,
+            }
+        )
 
     db.commit()
 
-    for edge in active_edges:
+    decayed_edges = []
+
+    for record in event_records:
+        edge = record["edge"]
         db.refresh(edge)
+        decayed_edges.append(edge)
+
+        publish_event(
+            "graph.edge.decayed",
+            build_edge_decayed_event(
+                network_id=network_id,
+                edge=edge,
+                old_weight=record["old_weight"],
+                was_active=record["was_active"],
+            ),
+        )
+
+        if record["archived_now"]:
+            publish_event(
+                "graph.edge.archived",
+                build_edge_archived_event(
+                    network_id=network_id,
+                    edge=edge,
+                    archive_threshold=ARCHIVE_THRESHOLD,
+                ),
+            )
 
     return {
         "message": "Decay applied successfully",
-        "decayed_edges": active_edges,
+        "decayed_edges": decayed_edges,
     }
 
 @router.post("/networks/{network_id}/query", response_model=QueryResponse)
