@@ -1,4 +1,3 @@
-# tests/utils.py
 def create_network(client, name="Test Network"):
     response = client.post("/networks/", json={"name": name})
     return response.json()["id"]

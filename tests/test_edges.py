@@ -1,4 +1,5 @@
 import pytest
+from tests.utils import create_network, create_node
 
 # tests/test_edges.py
 def create_network(client, name="Edge Test Network"):

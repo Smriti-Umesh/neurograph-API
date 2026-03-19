@@ -182,3 +182,22 @@
     border-right-color: var(--border);
   }
 }
+.panel {
+  border: 1px solid #ccc;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  background: #fafafa;
+}
+
+input {
+  padding: 0.5rem;
+  width: 100%;
+  max-width: 320px;
+  box-sizing: border-box;
+}
+
+button {
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.25rem;
+}
