@@ -1,7 +1,6 @@
 import pytest
 from tests.utils import create_network, create_node
 
-# tests/test_edges.py
 def create_network(client, name="Edge Test Network"):
     response = client.post("/networks/", json={"name": name})
     return response.json()["id"]
@@ -804,6 +803,7 @@ def test_query_missing_seed_nodes_return_404(client):
 
     assert response.status_code == 404
     assert "Seed node(s) not found" in response.json()["detail"]
+
 
 def test_query_missing_seed_nodes_return_404(client):
     network_id = create_network(client)

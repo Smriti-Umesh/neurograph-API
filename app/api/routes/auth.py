@@ -11,10 +11,21 @@ from app.dependencies.auth import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+"""
+Authentication Router
+
+Handles:
+- User registration (account creation with hashed passwords)
+- User login (JWT-based authentication)
+- Authenticated user retrieval (/me)
+
+Uses OAuth2 password flow and JWT tokens for stateless authentication.
+"""
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register_user(payload: UserCreate, db: Session = Depends(get_db)):
     existing_email = db.query(User).filter(User.email == payload.email).first()
+     # Ensure email is unique
     if existing_email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -57,7 +68,7 @@ def login_user(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = D
             detail="Invalid username/email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
+    # Generating JWT token with user ID as subject
     access_token = create_access_token(data={"sub": str(user.id)})
 
     return {

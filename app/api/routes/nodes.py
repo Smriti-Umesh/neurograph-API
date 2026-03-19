@@ -8,6 +8,15 @@ from app.schemas.node import NodeCreate, NodeUpdate, NodeResponse
 
 router = APIRouter(tags=["nodes"])
 
+"""
+Nodes Router
+
+Handles CRUD operations for nodes within a network.
+
+Nodes represent entities in the knowledge graph (e.g., concepts, papers, authors).
+They act as the fundamental units that are connected via edges and used
+in learning and querying processes.
+"""
 
 @router.post("/networks/{network_id}/nodes", response_model=NodeResponse, status_code=status.HTTP_201_CREATED)
 def create_node(network_id: int, payload: NodeCreate, db: Session = Depends(get_db)):

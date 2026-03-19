@@ -1,4 +1,4 @@
-# tests/test_networks.py
+
 def test_create_network(client):
     response = client.post("/networks/", json={"name": "Test Network"})
 

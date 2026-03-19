@@ -9,6 +9,15 @@ from app.schemas.network import NetworkCreate, NetworkUpdate, NetworkResponse
 
 router = APIRouter(prefix="/networks", tags=["networks"])
 
+"""
+Networks Router
+
+Handles CRUD operations for user-specific networks.
+
+Each network represents an isolated knowledge graph owned by a user.
+All operations enforce ownership to ensure users can only access
+their own data (basic multi-tenant security model).
+"""
 
 @router.post("/", response_model=NetworkResponse, status_code=status.HTTP_201_CREATED)
 def create_network(
@@ -38,6 +47,7 @@ def get_network(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+     # ensuring users can only access their own networks
     network = (
         db.query(Network)
         .filter(Network.id == network_id, Network.owner_id == current_user.id)
@@ -66,6 +76,7 @@ def update_network(
         .first()
     )
 
+    # Either network doesn't or user is not authorised to access it 
     if network is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -96,7 +107,7 @@ def delete_network(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Error: Network not found",
         )
-
+    # Permanently remove network
     db.delete(network)
     db.commit()
     return None

@@ -14,6 +14,21 @@ from app.models.edge import Edge
 from app.models.network import Network
 from app.models.node import Node
 
+"""
+Graph Service
+
+contains the core graph intelligence of the system.
+
+Responsibilities:
+- Validate graph entities (networks and nodes)
+- Apply Hebbian-style learning to edges
+- Apply decay to active edges and archive weak connections
+- Reactivate archived edges once strengthened again
+- Execute graph queries using spreading activation
+
+"""
+
+# Graph behaviour parameters
 LEARNING_INCREMENT = 0.1
 INITIAL_WEIGHT = 1.0
 DECAY_AMOUNT = 0.2
@@ -33,6 +48,7 @@ def get_network_or_404(db: Session, network_id: int) -> Network:
 
 
 def get_node_or_404(db: Session, node_id: int, detail: str) -> Node:
+    # Reusable helper for node existence checks with custom error messages
     node = db.query(Node).filter(Node.id == node_id).first()
     if node is None:
         raise HTTPException(
@@ -43,6 +59,8 @@ def get_node_or_404(db: Session, node_id: int, detail: str) -> Node:
 
 
 def validate_nodes_belong_to_network(network_id: int, *nodes: Node) -> None:
+    # Prevent cross-network relationships by ensuring all nodes belong
+    # to the same graph context
     for node in nodes:
         if node.network_id != network_id:
             raise HTTPException(
@@ -77,6 +95,7 @@ def apply_learning(
     created_new_edge = False
 
     if edge is None:
+         # No prior association exists, so create a new active edge
         created_new_edge = True
         old_weight = 0.0
         was_active = False
@@ -104,6 +123,7 @@ def apply_learning(
     db.commit()
     db.refresh(edge)
 
+    # Emit event for learning update so external consumers can react
     publish_event(
         "graph.edge.learned",
         build_edge_learned_event(
@@ -146,11 +166,15 @@ def apply_decay(db: Session, network_id: int):
     event_records = []
 
     for edge in active_edges:
+        # Existing association is strengthened according to Hebbian logic:
+        # repeated co-activation increases connection strength
         old_weight = edge.weight
         was_active = edge.is_active
 
+         # Simulate forgetting by weakening the edge
         edge.weight = round(max(0.0, edge.weight - DECAY_AMOUNT), 4)
 
+        # Archived edges are allowed to recover instead of being recreated
         archived_now = False
         if edge.weight <= ARCHIVE_THRESHOLD:
             edge.is_active = False
@@ -174,6 +198,7 @@ def apply_decay(db: Session, network_id: int):
         db.refresh(edge)
         decayed_edges.append(edge)
 
+         # Emit decay event for every weakened edge
         publish_event(
             "graph.edge.decayed",
             build_edge_decayed_event(
@@ -259,12 +284,14 @@ def query_graph(
         )
 
         for edge in outgoing_edges:
+             # Activation weakens as it travels through the graph
+            # Stronger edges preserve more of the signal
             next_node_id = edge.target_node_id
             next_score = current_score * edge.weight * PROPAGATION_DECAY
 
             if next_score < min_score:
                 continue
-
+              # Avoiding cycles in explanation paths
             if next_node_id in current_path:
                 continue
 
@@ -272,6 +299,7 @@ def query_graph(
 
             existing_result = results_map.get(next_node_id)
             if existing_result is None or next_score > existing_result["score"]:
+                 # Keep only the strongest discovered path per node
                 results_map[next_node_id] = {
                     "score": next_score,
                     "path": next_path,
@@ -282,6 +310,7 @@ def query_graph(
     seed_id_set = set(seed_node_ids)
 
     for node_id, data in results_map.items():
+          # Seed nodes are starting points, so exclude them from returned recommendations
         if node_id in seed_id_set:
             continue
 
@@ -292,7 +321,7 @@ def query_graph(
                 "path": data["path"],
             }
         )
-
+     # Higher scores indicate stronger associative relevance
     results.sort(key=lambda x: x["score"], reverse=True)
 
     return {

@@ -16,10 +16,51 @@ PUBMED_QUERY = os.getenv("PUBMED_QUERY", "hebbian learning")
 PUBMED_MAX_RECORDS = int(os.getenv("PUBMED_MAX_RECORDS", "5"))
 INGESTION_STATE_PATH = os.getenv("PUBMED_STATE_PATH", "data/pubmed_ingestion_state.json")
 PUBMED_REINGEST_MODE = os.getenv("PUBMED_REINGEST_MODE", "new_only").strip().lower()
-
+API_USERNAME = os.getenv("API_USERNAME", "")
+API_PASSWORD = os.getenv("API_PASSWORD", "")
 ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 
+
+# Global variable to cache the access token for API authentication
+ACCESS_TOKEN: Optional[str] = None
+
+
+def login_and_get_token() -> str:
+    if not API_USERNAME or not API_PASSWORD:
+        raise ValueError(
+            "Missing API_USERNAME or API_PASSWORD in environment. "
+            "Set them in .env so the ingestion script can authenticate."
+        )
+
+    response = requests.post(
+        f"{BASE_URL}/auth/login",
+        data={
+            "username": API_USERNAME,
+            "password": API_PASSWORD,
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+
+    data = response.json()
+    token = data.get("access_token")
+    if not token:
+        raise ValueError("Login succeeded but no access_token was returned.")
+
+    return token
+
+def get_auth_headers() -> Dict[str, str]:
+    global ACCESS_TOKEN
+
+    if ACCESS_TOKEN is None:
+        ACCESS_TOKEN = login_and_get_token()
+
+    return {
+        "Authorization": f"Bearer {ACCESS_TOKEN}"
+    }
+
+# filtering out some very common stopwords and generic phrases that often get extracted as concepts but aren't meaningful for graph connections
 COMMON_STOPWORDS = {
     "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "into",
     "is", "it", "of", "on", "or", "that", "the", "their", "this", "to", "was",
@@ -45,9 +86,7 @@ BORING_PHRASES = {
     "the authors",
 }
 
-# -------------------------
-# Normalization helpers
-# -------------------------
+# normalization and cleaning helpers
 
 def clean_text(value: str) -> str:
     value = value.strip()
@@ -113,7 +152,7 @@ def make_journal_key(journal: str) -> str:
 def make_concept_key(concept: str) -> str:
     return f"concept:{normalize_concept_name(concept)}"
 
-
+# Key generation helper based on existing node data, to avoid creating duplicates when the same paper/author/journal/concept is encountered multiple times in the ingestion process
 def make_key_from_existing_node(node: Dict) -> str:
     label = node["label"]
     node_type = node["node_type"]
@@ -144,6 +183,7 @@ def make_key_from_existing_node(node: Dict) -> str:
 
     return f"{node_type}:{normalize_text(label)}"
 
+# Concept phrase validation to filter out very generic or uninformative phrases that often get extracted from text but don't make good graph nodes
 def is_valid_concept_phrase(phrase: str) -> bool:
     cleaned = clean_text(phrase)
     normalized = normalize_text(cleaned)
@@ -196,7 +236,7 @@ def extract_text_concepts(title: Optional[str], abstract: Optional[str], max_con
     if title:
         source_parts.append(title)
 
-    # Keep abstract, but title usually gives cleaner phrases first
+
     if abstract:
         source_parts.append(abstract)
 
@@ -240,9 +280,8 @@ def extract_text_concepts(title: Optional[str], abstract: Optional[str], max_con
     )
 
     return candidates[:max_concepts]
-# -------------------------
-# PubMed helpers
-# -------------------------
+
+# PubMed API interaction helpers
 
 def search_pubmed(query: str, max_records: int) -> List[str]:
     params = {
@@ -274,9 +313,7 @@ def fetch_pubmed_details(pmids: List[str]) -> str:
     return response.text
 
 
-# -------------------------
 # XML parsing helpers
-# -------------------------
 
 def get_text(element: Optional[ET.Element]) -> Optional[str]:
     if element is None:
@@ -372,16 +409,12 @@ def parse_pubmed_xml(xml_text: str) -> List[Dict]:
 
 def build_ingestion_state_key(network_name: str, query: str) -> str:
     return f"{network_name}::{normalize_text(query)}"
-# -------------------------
-# Network helpers
-# -------------------------
-# -------------------------
-# Ingestion state helpers
-# -------------------------
 
-# -------------------------
-# Ingestion state helpers
-# -------------------------
+# network/query-specific ingestion state 
+# management to track which PMIDs 
+# have already been ingested for a given network and query, 
+# allowing the script to skip already processed papers on 
+# subsequent runs when using "new_only" mode
 
 def build_ingestion_state_key(network_name: str, query: str) -> str:
     return f"{network_name}::{normalize_text(query)}"
@@ -422,14 +455,23 @@ def add_seen_pmids(network_name: str, query: str, pmids: List[str]) -> None:
     save_ingestion_state(state)
 
 def list_networks() -> List[Dict]:
-    response = requests.get(f"{BASE_URL}/networks/", timeout=30)
+    response = requests.get(
+        f"{BASE_URL}/networks/",
+        headers=get_auth_headers(),
+        timeout=30,
+    )
     response.raise_for_status()
     return response.json()
 
 
 def create_network(name: str) -> Dict:
     payload = {"name": name}
-    response = requests.post(f"{BASE_URL}/networks/", json=payload, timeout=30)
+    response = requests.post(
+        f"{BASE_URL}/networks/",
+        json=payload,
+        headers=get_auth_headers(),
+        timeout=30,
+    )
     response.raise_for_status()
     return response.json()
 
@@ -447,12 +489,14 @@ def get_or_create_network_id(network_name: str) -> int:
     return network["id"]
 
 
-# -------------------------
-# Node helpers
-# -------------------------
+# Node and edge management helpers
 
 def get_existing_nodes(network_id: int) -> Dict[str, int]:
-    response = requests.get(f"{BASE_URL}/networks/{network_id}/nodes", timeout=30)
+    response = requests.get(
+        f"{BASE_URL}/networks/{network_id}/nodes",
+        headers=get_auth_headers(),
+        timeout=30,
+    )
     response.raise_for_status()
     nodes = response.json()
 
@@ -473,6 +517,7 @@ def create_node(network_id: int, label: str, node_type: str) -> int:
     response = requests.post(
         f"{BASE_URL}/networks/{network_id}/nodes",
         json=payload,
+        headers=get_auth_headers(),
         timeout=30,
     )
     response.raise_for_status()
@@ -494,9 +539,9 @@ def ensure_node(
     return node_map[key]
 
 
-# -------------------------
-# Edge learning helper
-# -------------------------
+# Edge management helper to create a relationship between two nodes,
+# with a specified relationship type, and handle API 
+# interaction and error checking
 
 def learn_edge(
     network_id: int,
@@ -513,6 +558,7 @@ def learn_edge(
     response = requests.post(
         f"{BASE_URL}/networks/{network_id}/learn",
         json=payload,
+        headers=get_auth_headers(),
         timeout=30,
     )
     response.raise_for_status()
@@ -520,9 +566,9 @@ def learn_edge(
     print(f"Learned: {source_id} -> {target_id} ({relationship_type})")
 
 
-# -------------------------
-# Article -> graph mapping
-# -------------------------
+# and then the main ingestion logic that ties everything together,
+# fetching data from PubMed, parsing it, and creating nodes and edges in the graph based
+# on the article metadata and extracted concepts
 
 def ingest_article(network_id: int, node_map: Dict[str, int], article: Dict) -> None:
     title = article.get("title")
@@ -598,9 +644,10 @@ def link_similar_papers(network_id: int, node_map: Dict[str, int], articles: Lis
                     f"(shared concepts: {sorted(shared_concepts)})"
                 )
 
-# -------------------------
-# Main
-# -------------------------
+
+# Main execution logic 
+# depends on changes in .env for configuration of the PubMed query, 
+# target network, and reingestion mode
 
 def main() -> None:
     print(f"PubMed query: {PUBMED_QUERY}")
@@ -622,6 +669,7 @@ def main() -> None:
 
     seen_pmids = get_seen_pmids(NETWORK_NAME, PUBMED_QUERY)
 
+    # Determine which PMIDs to ingest based on reingest mode and previously seen PMIDs for this network/query
     if PUBMED_REINGEST_MODE == "force_all":
         selected_pmids = pmids
         print("Reingest mode: force_all")
@@ -635,7 +683,7 @@ def main() -> None:
             print("No new PMIDs to ingest. All fetched papers were already processed for this network/query.")
             return
 
-
+    # Fetch details for selected PMIDs, parse them, and ingest into the graph
     xml_text = fetch_pubmed_details(selected_pmids)
     articles = parse_pubmed_xml(xml_text)
 
