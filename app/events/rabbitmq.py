@@ -58,4 +58,20 @@ def declare_debug_queue(channel):
         exchange=EXCHANGE_NAME,
         queue=DEBUG_QUEUE_NAME,
         routing_key="graph.edge.reactivated",
+        
+    )
+    channel.queue_bind(
+        exchange=EXCHANGE_NAME,
+        queue=DEBUG_QUEUE_NAME,
+        routing_key="learn.request",
+    )
+    channel.queue_bind(
+        exchange=EXCHANGE_NAME,
+        queue=DEBUG_QUEUE_NAME,
+        routing_key="query.request",
+    )
+    channel.queue_bind(
+        exchange=EXCHANGE_NAME,
+        queue=DEBUG_QUEUE_NAME,
+        routing_key="decay.request",
     )
