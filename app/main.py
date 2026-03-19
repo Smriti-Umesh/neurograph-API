@@ -6,7 +6,7 @@ from app.api.routes.db_check import router as db_router
 from app.api.routes.networks import router as networks_router
 from app.api.routes.nodes import router as nodes_router
 from app.api.routes.edges import router as edges_router
-
+from app.api.routes.auth import router as auth_router
 
 app = FastAPI(title="Brain-Inspired Knowledge Network API")
 
@@ -26,6 +26,7 @@ app.include_router(db_router)
 app.include_router(networks_router)
 app.include_router(nodes_router)
 app.include_router(edges_router)
+app.include_router(auth_router)
 
 
 @app.get("/")

@@ -1,11 +1,11 @@
-from sqlalchemy import String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Column, ForeignKey, Integer, String
 
-from app.models.base import Base
+from app.core.db import Base
 
 
 class Network(Base):
     __tablename__ = "networks"
 
-    id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
