@@ -1,4 +1,4 @@
-# app/a2a/publisher.py
+
 
 import json
 import pika
@@ -9,7 +9,8 @@ from app.events.rabbitmq import (
     get_rabbitmq_connection,
 )
 
-
+# Implements the A2A publisher that can be used by the API routes and graph service to 
+# publish learn, query, and decay requests to the A2A request queue.
 def publish_a2a_message(routing_key: str, payload: dict) -> None:
     body = json.dumps(payload)
 

@@ -1,4 +1,4 @@
-# app/a2a/handlers.py
+
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -10,7 +10,6 @@ from app.a2a.schemas import (
 )
 from app.services.graph_service import apply_learning, apply_decay, query_graph
 
-
 def handle_learn_request(db: Session, payload: dict) -> dict:
     data = LearnRequestPayload(**payload)
 
@@ -21,7 +20,9 @@ def handle_learn_request(db: Session, payload: dict) -> dict:
         target_node_id=data.target_node_id,
         relationship_type=data.relationship_type,
     )
-
+    # Transform the result into a standardized response format 
+    # that includes the updated edge information
+    
     return {
         "message": result["message"],
         "edge": {
@@ -50,7 +51,8 @@ def handle_query_request(db: Session, payload: dict) -> dict:
 
     return result
 
-
+# Handler for decay requests that applies decay to edges in the specified 
+# network and returns the decayed edges
 def handle_decay_request(db: Session, payload: dict) -> dict:
     data = DecayRequestPayload(**payload)
 
@@ -76,7 +78,8 @@ def handle_decay_request(db: Session, payload: dict) -> dict:
         ],
     }
 
-
+# Main dispatcher that takes in the raw message, 
+# determines the type of request,
 def dispatch_a2a_message(db: Session, message_type: str, payload: dict) -> dict:
     if message_type == "learn.request":
         return handle_learn_request(db, payload)

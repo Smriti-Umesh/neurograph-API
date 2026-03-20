@@ -6,7 +6,8 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from app.events.rabbitmq import DEBUG_QUEUE_NAME, get_rabbitmq_connection
 
-
+# This is a simple consumer script that can be used to 
+#  print messages from the debug queue.
 def main():
     connection = get_rabbitmq_connection()
     channel = connection.channel()

@@ -14,7 +14,8 @@ from app.events.rabbitmq import EXCHANGE_NAME, get_rabbitmq_connection, declare_
 A2A_REQUEST_QUEUE = "graph.a2a.requests"
 A2A_RESPONSE_ROUTING_KEY = "graph.a2a.responses"
 
-
+# implements the A2A consumer that listens for messages on the A2A request queue,
+# processes them using the handlers defined in app.a2a.handlers, and publishes responses
 def declare_a2a_queue(channel):
     channel.queue_declare(queue=A2A_REQUEST_QUEUE, durable=True)
 
@@ -34,7 +35,8 @@ def declare_a2a_queue(channel):
         routing_key="decay.request",
     )
 
-
+# Rabbitmq setup to declare the exchange and queue,
+# and the main loop to consume messages and dispatch them to handlers,
 def build_success_response(message: A2AMessage, result: dict) -> dict:
     return {
         "message_id": message.message_id,
@@ -44,7 +46,8 @@ def build_success_response(message: A2AMessage, result: dict) -> dict:
         "payload": result,
     }
 
-
+# Helper to build standardized error responses for validation errors, 
+# HTTP exceptions, and unexpected exceptions,
 def build_error_response(raw_message: dict, error_type: str, detail: str) -> dict:
     return {
         "message_id": raw_message.get("message_id", "unknown"),
@@ -62,6 +65,7 @@ def main():
     connection = get_rabbitmq_connection()
     channel = connection.channel()
 
+    # Declare the exchange and queue, and start consuming messages
     declare_graph_exchange(channel)
     declare_a2a_queue(channel)
 
@@ -93,6 +97,7 @@ def main():
 
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
+        # Handle validation errors from Pydantic, HTTP exceptions from FastAPI handlers,
         except ValidationError as e:
             response = build_error_response(raw_message, "validation_error", str(e))
             publish_a2a_message(A2A_RESPONSE_ROUTING_KEY, response)
@@ -113,6 +118,7 @@ def main():
         on_message_callback=callback,
     )
 
+    # consumer will run indefinitely until interrupted.
     print("Waiting for A2A requests. Press CTRL+C to stop.")
     channel.start_consuming()
 
