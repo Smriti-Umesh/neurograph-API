@@ -126,7 +126,7 @@ Then in another terminal window run
 
 ```
 python scripts/ingest_pubmed_data.py
-python scripts/send_a2a_message.py
+python scripts/send_a2a_message.py query-active-paper "yournetworkname"
 ```
 
 
