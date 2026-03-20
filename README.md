@@ -9,56 +9,126 @@ It is a brain-inspired knowledge network which introduces learning-based behavio
 ```bash
 git https://github.com/Smriti-Umesh/neurograph-API.git
 cd neurograph-API
-
-# PostgreSQL
-docker run -d \
-  --name neurograph-postgres \
-  -e POSTGRES_USER=app \
-  -e POSTGRES_PASSWORD=app \
-  -e POSTGRES_DB=brainnet \
-  -p 5432:5432 \
-  postgres:16
-
-
-# RabbitMQ 
-docker run -d \
-  --name neurograph-rabbit \
-  -p 5672:5672 \
-  -p 15672:15672 \
-  rabbitmq:3-management
 ```
 
+### Step 2 - Create Environment File (.env) 
 
-### 2. Activate the venv
-```bash
-python -m venv venv
-
-# Mac/Linux 
-source venv/bin/activate
 ```
+RABBITMQ_HOST=localhost
+RABBITMQ_PORT=5672
+RABBITMQ_USERNAME=guest
+RABBITMQ_PASSWORD=guest
+RABBITMQ_VHOST=/
 
-### 3. Install requirements
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Environment variables
-```bash
-# create .env file in root directory 
-DATABASE_URL=postgresql+psycopg://app:app@localhost:5432/brainnet
 API_BASE_URL=http://127.0.0.1:8000
+API_USERNAME= yourusername
+API_PASSWORD=yourpassword
+PUBMED_NETWORK_NAME=nameofyournetwork
+PUBMED_QUERY= ex. hebbian learning
+PUBMED_MAX_RECORDS=5
+PUBMED_REINGEST_MODE=force_all 
 ```
 
-### 5. Run migrations 
-```bash
+### Step 3 - Setup docker container
+
+```
+docker-compose up --build
+
+```
+
+
+### Step 4 - Setup venv 
+
+Depending on python version (python or python3) create venv
+```
+python -m venv venv
+source venv/bin/activate
+
+pip install -r requirements.txt
 alembic upgrade head
+uvicorn app.main:app --reload
+```
+available on: http://127.0.0.1:8000/docs
+
+
+### Step 5 - Frontend
+
+In new terminal window. 
+
+```
+source venv/bin/activate
+cd frontend
+npm install
+npm run dev
 ```
 
-### 6. Run API
-```bash
-uvicorn app.main:app --reload
- 
+### Step 6 - Authentication Setup
+
+Go to 
 ```
+http://127.0.0.1:8000/docs
+```
+
+Register user via 
+```
+/auth/register
+```
+
+Login via 
+```
+/auth/login
+```
+
+Update .env with the setup username and password
+
+```
+API_USERNAME= yourusername
+API_PASSWORD=yourpassword
+
+```
+
+And then you can normally login in frontend and use the network!
+
+### Step 7 - Create a network name and add that to env. 
+
+In frontend, Create a network name and then add it to .env
+
+```
+PUBMED_NETWORK_NAME=nameofyournetwork
+```
+
+### Step 8 - Start consumer events
+
+in a new terminal window inside venv run 
+```
+source venv/bin/activate
+python scripts/consumer_events.py
+
+```
+
+RabbitMQ Dashboard
+```
+http://localhost:15672
+```
+
+
+
+### Step 9 - A2A + Ingestion 
+
+In a new terminal window inside venv run
+
+```
+python scripts/consumer_a2a.py
+```
+
+
+Then in another terminal window run 
+
+```
+python scripts/ingest_pubmed_data.py
+python scripts/send_a2a_message.py
+```
+
 
 ## API Documentation 
 
