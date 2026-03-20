@@ -122,7 +122,7 @@ python scripts/consumer_a2a.py
 ```
 
 
-Then in another terminal window run 
+Then in another terminal window inside venv run
 
 ```
 python scripts/ingest_pubmed_data.py
