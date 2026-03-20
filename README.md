@@ -7,7 +7,7 @@ It is a brain-inspired knowledge network which introduces learning-based behavio
 ### 1. Clone the Repository
 
 ```bash
-git https://github.com/Smriti-Umesh/neurograph-API.git
+git clone https://github.com/Smriti-Umesh/neurograph-API.git
 cd neurograph-API
 ```
 
