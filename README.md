@@ -1,9 +1,9 @@
-# Neurograph API 
+# NeurographAPI 
 
 It is a brain-inspired knowledge network which introduces learning-based behaviour. The system models entities such as papers, authors, and concepts as nodes, with relationships represented as weighted edges.  These relationships evolve over time using principles inspired by Hebbian learning. Connections strengthen when frequently activated, decay when unused, and can be reactivated if relevant again. This allows the system to simulate how knowledge forms, weakens, and reorganises over time.
 
 ## NOTE
-Commits appear under a personal GitHub account due to local Git configuration using a different email. Both accounts belong to the same author, and all work was completed independently.
+Commits appear under a personal GitHub account due to local Git configuration using a different email. Both accounts belong to the same author, and all work was done independtly by me. 
 
 ## Setup Instructions
 
@@ -27,7 +27,7 @@ API_BASE_URL=http://127.0.0.1:8000
 API_USERNAME= yourusername
 API_PASSWORD=yourpassword
 PUBMED_NETWORK_NAME=nameofyournetwork
-PUBMED_QUERY= ex. hebbian learning
+PUBMED_QUERY= hebbian learning
 PUBMED_MAX_RECORDS=5
 PUBMED_REINGEST_MODE=force_all 
 ```
@@ -135,7 +135,6 @@ Then in another terminal window inside venv run
 python scripts/ingest_pubmed_data.py
 python scripts/send_a2a_message.py query-active-paper "yournetworkname"
 ```
-
 
 ## API Documentation 
 
