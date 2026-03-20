@@ -36,6 +36,10 @@ docker-compose up --build
 
 ```
 
+If you encounter port conflicts, ensure existing containers are stopped:
+```
+docker-compose down
+```
 
 ### Step 4 - Setup venv 
 
