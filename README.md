@@ -2,6 +2,9 @@
 
 It is a brain-inspired knowledge network which introduces learning-based behaviour. The system models entities such as papers, authors, and concepts as nodes, with relationships represented as weighted edges.  These relationships evolve over time using principles inspired by Hebbian learning. Connections strengthen when frequently activated, decay when unused, and can be reactivated if relevant again. This allows the system to simulate how knowledge forms, weakens, and reorganises over time.
 
+## NOTE
+Commits appear under a personal GitHub account due to local Git configuration using a different email. Both accounts belong to the same author, and all work was completed independently.
+
 ## Setup Instructions
 
 ### 1. Clone the Repository
